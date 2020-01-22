@@ -29,12 +29,19 @@ class TxnExecutor {
   vector<WriteElement<Tuple>> write_set_;
   vector<Procedure> pro_set_;
 
-  vector<LogRecord> log_set_;
-  LogHeader latest_log_header_;
+	// Logging
+  vector<LogRecord> log_set_1_;
+	vector<LogRecord> log_set_2_;
+	pthread_mutex_t lck_log_1_;
+	pthread_mutex_t lck_log_2_;
+  LogHeader latest_log_header_1_;
+	LogHeader latest_log_header_2_;
+	unsigned int cur_log_;
 
   TransactionStatus status_;
   unsigned int thid_;
   unsigned int lock_num_;
+	
   /* lock_num_ ...
    * the number of locks in local write set.
    */
@@ -53,7 +60,6 @@ class TxnExecutor {
     write_set_.reserve(MAX_OPE);
     pro_set_.reserve(MAX_OPE);
     // log_set_.reserve(LOGSET_SIZE);
-
     // latest_log_header_.init();
 
     lock_num_ = 0;
@@ -61,6 +67,11 @@ class TxnExecutor {
     max_wset_.obj_ = 0;
 
     genStringRepeatedNumber(write_val_, VAL_SIZE, thid);
+
+		pthread_mutex_init(&lck_log_1_, NULL);
+		pthread_mutex_init(&lck_log_2_, NULL);
+		cur_log_ = 1;
+		pthread_mutex_lock(&lck_log_1_);
   }
 
   void displayWriteSet();

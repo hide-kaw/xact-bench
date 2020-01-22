@@ -221,20 +221,41 @@ void TxnExecutor::abort() {
 }
 
 void TxnExecutor::wal(uint64_t ctid) {
-  for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
+	for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
     LogRecord log(ctid, (*itr).key_, write_val_);
-    log_set_.push_back(log);
-    latest_log_header_.chkSum += log.computeChkSum();
-    ++latest_log_header_.logRecNum;
+		if (cur_log_ == 1) {
+			log_set_1_.push_back(log);
+			latest_log_header_1_.chkSum += log.computeChkSum();
+			++latest_log_header_1_.logRecNum;
+		}
+		else { // cur_log_ == 2
+			log_set_2_.push_back(log);
+			latest_log_header_2_.chkSum += log.computeChkSum();
+			++latest_log_header_2_.logRecNum;
+		}
   }
+		
+	if (write_set_.size() >= LOGSET_SIZE) {
+		if (cur_log_ == 1) {
+			pthread_mutex_lock(&lck_log_2_);
+			cur_log_ = 2;
+			pthread_mutex_unlock(&lck_log_1_);
+		}
+		else { // cur_log_ == 2
+			pthread_mutex_lock(&lck_log_1_);
+			cur_log_ = 1;
+			pthread_mutex_unlock(&lck_log_2_);
+		}
+	}
 
+	/*
   if (log_set_.size() > LOGSET_SIZE / 2) {
     // prepare write header
     latest_log_header_.convertChkSumIntoComplementOnTwo();
 
     // write header
     logfile_.write((void *)&latest_log_header_, sizeof(LogHeader));
-
+		
     // write log record
     // for (auto itr = log_set_.begin(); itr != log_set_.end(); ++itr)
     //  logfile_.write((void *)&(*itr), sizeof(LogRecord));
@@ -248,6 +269,7 @@ void TxnExecutor::wal(uint64_t ctid) {
     latest_log_header_.init();
     log_set_.clear();
   }
+	*/
 }
 
 void TxnExecutor::writePhase() {
