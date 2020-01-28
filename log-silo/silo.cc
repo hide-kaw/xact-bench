@@ -14,11 +14,13 @@
 #include <sstream>
 #include <iomanip>
 
-
 #define GLOBAL_VALUE_DEFINE
+
+
 #include "include/atomic_tool.hh"
 #include "include/common.hh"
 #include "include/transaction.hh"
+LOG_MANAGER *LogManager;
 
 #include "../include/atomic_wrapper.hh"
 #include "../include/backoff.hh"
@@ -31,6 +33,7 @@
 #include "../include/tsc.hh"
 #include "../include/util.hh"
 #include "../include/zipf.hh"
+
 
 using namespace std;
 
@@ -58,15 +61,17 @@ void worker(size_t thid, char& ready, const bool& start, const bool& quit,
   uint64_t epoch_timer_start, epoch_timer_stop;
   Backoff backoff(CLOCKS_PER_US);
 
-#ifdef WAL
-	// open log file (river)
-	std::ostringstream oss;	oss << thid;
-	std::string logpath = "/tmp/log-" + oss.str();
-	//std::cout << logpath << std::endl;
-  genLogFile(logpath, thid);
-  trans.logfile_.open(logpath, O_TRUNC | O_WRONLY, 0644);
-  //trans.logfile.ftruncate(10^9);
-#endif
+  char path[BUFSIZ];
+  bzero(path, BUFSIZ);
+  sprintf(path, "/tmp/log/%d", thid);
+  //SSS(path);
+  //ERR;
+  std::string logpath = string(path);
+  //genLogFile(logpath, thid);
+  //trans.logfile_.open(logpath, O_TRUNC | O_WRONLY, 0644);
+  trans.logfile_.open(path, O_TRUNC | O_WRONLY, 0644);
+  trans.logfile_.ftruncate(10^9);
+
 	//NNN;
 #if MASSTREE_USE
   MasstreeWrapper<Tuple>::thread_init(int(thid));
@@ -132,11 +137,79 @@ void worker(size_t thid, char& ready, const bool& start, const bool& quit,
   return;
 }
 
+void *
+logger(void *arg)
+{
+  arg = NULL; // just to make compiler quiet
+
+	// open log file (river)
+  for (uint thid = 0; thid < THREAD_NUM; thid++) {
+    std::ostringstream oss;	oss << thid;
+    std::string logpath = "/tmp/log/log-" + oss.str();
+    //std::cout << logpath << std::endl;
+    genLogFile(logpath, thid);
+    LogManager[thid].logfile_.open(logpath, O_TRUNC | O_WRONLY, 0644);
+  }
+  //trans.logfile.ftruncate(10^9);
+
+  while (true) {
+    for (uint i = 0; i < THREAD_NUM; i++) {
+      if (LogManager[i].cur_log_ == 1) { // 1 is used for workers, My Log ID = 2
+        pthread_mutex_lock(&LogManager[i].lck_log_2_);
+        // prepare write header
+        LogManager[i].latest_log_header_2_.convertChkSumIntoComplementOnTwo();
+        // write header
+        LogManager[i].logfile_.write((void *)&LogManager[i].latest_log_header_2_, sizeof(LogHeader));
+        // write log record
+        LogManager[i].logfile_.write((void *)&(LogManager[i].log_set_2_[0]),
+                                     sizeof(LogRecord) * LogManager[i].latest_log_header_2_.logRecNum);
+        // sync
+        LogManager[i].logfile_.fdatasync();
+        // clear for next transactions.
+        LogManager[i].latest_log_header_2_.init();
+        LogManager[i].log_set_2_.clear();
+        pthread_mutex_unlock(&LogManager[i].lck_log_2_);
+      } else { // My Log ID = 1
+        pthread_mutex_lock(&LogManager[i].lck_log_1_);
+        // prepare write header
+        LogManager[i].latest_log_header_1_.convertChkSumIntoComplementOnTwo();
+        // write header
+        LogManager[i].logfile_.write((void *)&LogManager[i].latest_log_header_1_, sizeof(LogHeader));
+        // write log record
+        LogManager[i].logfile_.write((void *)&(LogManager[i].log_set_1_[0]),
+                                     sizeof(LogRecord) * LogManager[i].latest_log_header_1_.logRecNum);
+        // sync
+        LogManager[i].logfile_.fdatasync();
+        // clear for next transactions.
+        LogManager[i].latest_log_header_1_.init();
+        LogManager[i].log_set_1_.clear();
+        pthread_mutex_unlock(&LogManager[i].lck_log_1_);
+      }
+    }
+  }
+}
+
+
+void
+initLog(void)
+{
+  LogManager = new LOG_MANAGER[THREAD_NUM];
+  for (uint i = 0; i < THREAD_NUM; i++) {
+    LogManager[i].cur_log_ = 1;
+    pthread_mutex_init(&LogManager[i].lck_log_1_, NULL);
+    pthread_mutex_init(&LogManager[i].lck_log_2_, NULL);
+  }
+  
+  pthread_t thread;
+  pthread_create(&thread, NULL, logger, NULL);
+}
+
 int main(int argc, char* argv[]) try {
   chkArg(argc, argv);
   //displayParameter();
   makeDB();
-
+  initLog();
+  
   alignas(CACHE_LINE_SIZE) bool start = false;
   alignas(CACHE_LINE_SIZE) bool quit = false;
   alignas(CACHE_LINE_SIZE) std::vector<Result> res(THREAD_NUM);

@@ -276,7 +276,7 @@ void TxnExecutor::writePhase() {
   maxtid.latest = 1;
   mrctid_ = maxtid;
 
-  // wal(maxtid.obj_);
+  wal(maxtid.obj_);
 
   // write(record, commit-tid)
   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {

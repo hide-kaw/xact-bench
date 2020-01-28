@@ -1,0 +1,22 @@
+g++   -c -pipe -g -O3 -std=c++17 -march=native -Wall -Wextra -Wdangling-else -Wchkp -Winvalid-memory-model -DLinux -Ddbs12 -DKEY_SIZE=8 -DVAL_SIZE=4 -DADD_ANALYSIS=1 -DBACK_OFF=0 -DMASSTREE_USE=0 -DNO_WAIT_LOCKING_IN_VALIDATION=1 -DPARTITION_TABLE=0 -DPROCEDURE_SORT=0 -DSLEEP_READ_PHASE=0  -DWAL=1    -c -o silo.o silo.cc
+silo.cc: In function ‘void* logger(void*)’:
+silo.cc:142:9: warning: variable ‘my_log’ set but not used [-Wunused-but-set-variable]
+     int my_log;
+         ^~~~~~
+silo.cc:139:14: warning: unused parameter ‘arg’ [-Wunused-parameter]
+ logger(void *arg)
+              ^~~
+silo.cc: In function ‘void initLog()’:
+silo.cc:187:21: warning: comparison between signed and unsigned integer expressions [-Wsign-compare]
+   for (int i = 0; i < THREAD_NUM; i++) {
+                   ~~^~~~~~~~~~~~
+silo.cc: In function ‘int main(int, char**)’:
+silo.cc:208:3: error: ‘makeLogger’ was not declared in this scope
+   makeLogger();
+   ^~~~~~~~~~
+silo.cc:208:3: note: suggested alternative: ‘logger’
+   makeLogger();
+   ^~~~~~~~~~
+   logger
+../include/MakefileForMasstreeUse:23: recipe for target 'silo.o' failed
+make: *** [silo.o] Error 1

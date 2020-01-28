@@ -1,4 +1,4 @@
-PROG1 = silo
+PROG1 = log-silo
 SILO_SRCS1 := silo.cc transaction.cc util.cc
 PROG2 = replayTest
 SRCS2 := replayTest.cc
@@ -17,7 +17,8 @@ NO_WAIT_LOCKING_IN_VALIDATION=1
 PARTITION_TABLE=0
 PROCEDURE_SORT=0
 WAL=1
-
+WAL_ASYNC=0
+WAL_SYNC=1
 SLEEP_READ_PHASE=0 # # of tics
 # end of initialization
 
@@ -36,6 +37,8 @@ CFLAGS = -c -pipe -g -O3 -std=c++17 -march=native \
 				 -DPROCEDURE_SORT=$(PROCEDURE_SORT) \
 				 -DSLEEP_READ_PHASE=$(SLEEP_READ_PHASE) \
 				 -DWAL=$(WAL) \
+				 -DWAL_ASYNC=$(WAL_ASYNC) \
+				 -DWAL_SYNC=$(WAL_SYNC) \
 
 LDFLAGS = -L../third_party/mimalloc/out/release -L../third_party/mimalloc/out/debug
 #LIBS = -lpthread -lmimalloc

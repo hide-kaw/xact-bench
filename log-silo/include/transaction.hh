@@ -13,7 +13,7 @@
 #include "silo_op_element.hh"
 #include "tuple.hh"
 
-#define LOGSET_SIZE 1000
+#define LOGSET_SIZE (1000*1000)
 
 using namespace std;
 
@@ -23,31 +23,39 @@ enum class TransactionStatus : uint8_t {
   kAborted,
 };
 
+class LOG_MANAGER {
+ public:
+  // Logging objects
+  vector<LogRecord> log_set_1_;
+	vector<LogRecord> log_set_2_;
+  LogHeader latest_log_header_1_;
+	LogHeader latest_log_header_2_;
+	pthread_mutex_t lck_log_1_;
+	pthread_mutex_t lck_log_2_;
+	unsigned int cur_log_;
+  File logfile_;
+};
+
 class TxnExecutor {
  public:
   vector<ReadElement<Tuple>> read_set_;
   vector<WriteElement<Tuple>> write_set_;
   vector<Procedure> pro_set_;
 
-	// Logging
-  vector<LogRecord> log_set_1_;
-	vector<LogRecord> log_set_2_;
-	pthread_mutex_t lck_log_1_;
-	pthread_mutex_t lck_log_2_;
-  LogHeader latest_log_header_1_;
-	LogHeader latest_log_header_2_;
-	unsigned int cur_log_;
-
+#ifdef WAL_SYNC  
+  vector<LogRecord> log_set_;
+  LogHeader latest_log_header_;
+  File logfile_;
+#endif
+  
   TransactionStatus status_;
   unsigned int thid_;
   unsigned int lock_num_;
-	
+
   /* lock_num_ ...
    * the number of locks in local write set.
    */
   Result* sres_;
-
-  File logfile_;
 
   Tidword mrctid_;
   Tidword max_rset_, max_wset_;
@@ -67,11 +75,6 @@ class TxnExecutor {
     max_wset_.obj_ = 0;
 
     genStringRepeatedNumber(write_val_, VAL_SIZE, thid);
-
-		pthread_mutex_init(&lck_log_1_, NULL);
-		pthread_mutex_init(&lck_log_2_, NULL);
-		cur_log_ = 1;
-		pthread_mutex_lock(&lck_log_1_);
   }
 
   void displayWriteSet();

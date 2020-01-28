@@ -21,7 +21,7 @@ SLEEP_READ_PHASE=0 # # of tics
 # end of initialization
 
 CC = g++
-CFLAGS = -c -pipe -g -O3 -std=c++17 -march=native \
+CFLAGS = -c -pipe -g -O0 -std=c++17 -march=native \
 				 -Wall -Wextra -Wdangling-else -Wchkp -Winvalid-memory-model \
 				 -D$(shell uname) \
 				 -D$(shell hostname) \

@@ -40,7 +40,9 @@ class File {
   }
 
   bool open(const std::string& filePath, int flags, mode_t mode) {
+    //SSS(filePath);
     fd_ = ::open(filePath.c_str(), flags, mode);
+    //ERR;
     autoClose_ = true;
     return fd_ >= 0;
   }
