@@ -16,14 +16,14 @@ MASSTREE_USE=0
 NO_WAIT_LOCKING_IN_VALIDATION=1
 PARTITION_TABLE=0
 PROCEDURE_SORT=0
-WAL=1
+WAL=0
 WAL_ASYNC=0
-WAL_SYNC=1
+WAL_SYNC=0
 SLEEP_READ_PHASE=0 # # of tics
 # end of initialization
 
 CC = g++
-CFLAGS = -c -pipe -g -O3 -std=c++17 -march=native \
+CFLAGS = -c -pipe -g -O2 -std=c++17 -march=native \
 				 -Wall -Wextra -Wdangling-else -Wchkp -Winvalid-memory-model \
 				 -D$(shell uname) \
 				 -D$(shell hostname) \

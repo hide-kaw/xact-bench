@@ -13,8 +13,7 @@
 #include "silo_op_element.hh"
 #include "tuple.hh"
 
-#define LOGSET_SIZE (1000*1000)
-
+#define LOGSET_SIZE (128 * 1024)
 using namespace std;
 
 enum class TransactionStatus : uint8_t {

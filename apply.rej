@@ -1,0 +1,163 @@
+--- Makefile
++++ Makefile
+@@ -16,14 +16,14 @@ MASSTREE_USE=0
+ NO_WAIT_LOCKING_IN_VALIDATION=1
+ PARTITION_TABLE=0
+ PROCEDURE_SORT=0
+-WAL=1
++WAL=0
+ WAL_ASYNC=0
+-WAL_SYNC=1
++WAL_SYNC=0
+ SLEEP_READ_PHASE=0 # # of tics
+ # end of initialization
+ 
+ CC = g++
+-CFLAGS = -c -pipe -g -O3 -std=c++17 -march=native \
++CFLAGS = -c -pipe -g -O2 -std=c++17 -march=native \
+ 				 -Wall -Wextra -Wdangling-else -Wchkp -Winvalid-memory-model \
+ 				 -D$(shell uname) \
+ 				 -D$(shell hostname) \
+--- transaction.hh
++++ transaction.hh
+@@ -13,8 +13,7 @@
+ #include "silo_op_element.hh"
+ #include "tuple.hh"
+ 
+-#define LOGSET_SIZE (1000*1000)
+-
++#define LOGSET_SIZE (128 * 1024)
+ using namespace std;
+ 
+ enum class TransactionStatus : uint8_t {
+--- silo.cc
++++ silo.cc
+@@ -61,18 +61,13 @@ void worker(size_t thid, char& ready, const bool& start, const bool& quit,
+   uint64_t epoch_timer_start, epoch_timer_stop;
+   Backoff backoff(CLOCKS_PER_US);
+ 
++  #ifdef WAL_SYNC
+   char path[BUFSIZ];
+   bzero(path, BUFSIZ);
+-  sprintf(path, "/tmp/log/%d", thid);
+-  //SSS(path);
+-  //ERR;
+-  std::string logpath = string(path);
+-  //genLogFile(logpath, thid);
+-  //trans.logfile_.open(logpath, O_TRUNC | O_WRONLY, 0644);
+-  trans.logfile_.open(path, O_TRUNC | O_WRONLY, 0644);
+-  trans.logfile_.ftruncate(10^9);
+-
+-	//NNN;
++  sprintf(path, "/home/guest/pmem/log/%d", thid);
++  trans.logfile_.open(path, O_CREAT|O_TRUNC | O_WRONLY|O_APPEND, 0644);
++  #endif
++  
+ #if MASSTREE_USE
+   MasstreeWrapper<Tuple>::thread_init(int(thid));
+ #endif
+@@ -142,16 +137,16 @@ logger(void *arg)
+ {
+   arg = NULL; // just to make compiler quiet
+ 
+-	// open log file (river)
++  // open log file (river)
+   for (uint thid = 0; thid < THREAD_NUM; thid++) {
+     std::ostringstream oss;	oss << thid;
+-    std::string logpath = "/tmp/log/log-" + oss.str();
++    std::string logpath = "/home/guest/nvme/log/log-" + oss.str();
+     //std::cout << logpath << std::endl;
+     genLogFile(logpath, thid);
+     LogManager[thid].logfile_.open(logpath, O_TRUNC | O_WRONLY, 0644);
+   }
+   //trans.logfile.ftruncate(10^9);
+-
++  
+   while (true) {
+     for (uint i = 0; i < THREAD_NUM; i++) {
+       if (LogManager[i].cur_log_ == 1) { // 1 is used for workers, My Log ID = 2
+@@ -189,7 +184,6 @@ logger(void *arg)
+   }
+ }
+ 
+-
+ void
+ initLog(void)
+ {
+@@ -199,9 +193,11 @@ initLog(void)
+     pthread_mutex_init(&LogManager[i].lck_log_1_, NULL);
+     pthread_mutex_init(&LogManager[i].lck_log_2_, NULL);
+   }
+-  
+-  pthread_t thread;
+-  pthread_create(&thread, NULL, logger, NULL);
++
++  #ifdef WAL_ASYNC
++  //pthread_t thread;
++  //pthread_create(&thread, NULL, logger, NULL);
++  #endif
+ }
+ 
+ int main(int argc, char* argv[]) try {
+--- transaction.cc
++++ transaction.cc
+@@ -224,7 +224,8 @@ void TxnExecutor::abort() {
+ void TxnExecutor::wal(uint64_t ctid)
+ {
+ #ifdef WAL_ASYNC
+-	for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
++  /*
++  for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
+     LogRecord log(ctid, (*itr).key_, write_val_);
+ 		if (LogManager[thid_].cur_log_ == 1) {
+       LogManager[thid_].log_set_1_.push_back(log);
+@@ -250,17 +251,21 @@ void TxnExecutor::wal(uint64_t ctid)
+ 			pthread_mutex_unlock(&LogManager[thid_].lck_log_2_);
+ 		}
+ 	}
++  */
+ #endif
+ 
+ #ifdef WAL_SYNC  
+-  for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
++
++	  for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
+     LogRecord log(ctid, (*itr).key_, write_val_);
+     log_set_.push_back(log);
+     latest_log_header_.chkSum += log.computeChkSum();
+     ++latest_log_header_.logRecNum;
+   }
+   
+-  if (log_set_.size() > LOGSET_SIZE / 2) {
++  //if (log_set_.size() > LOGSET_SIZE / 2) {
++  if (log_set_.size() * sizeof(LogRecord) >= LOGSET_SIZE) {
++  //if (false) {
+     // prepare write header
+     latest_log_header_.convertChkSumIntoComplementOnTwo();
+ 
+@@ -274,13 +279,13 @@ void TxnExecutor::wal(uint64_t ctid)
+                    sizeof(LogRecord) * latest_log_header_.logRecNum);
+ 
+     // sync
+-    ERR;
+     logfile_.fdatasync();
+ 
+     // clear for next transactions.
+     latest_log_header_.init();
+     log_set_.clear();
+   }
++
+ #endif
+ }
+ 
+@@ -311,9 +316,8 @@ void TxnExecutor::writePhase() {
+   maxtid.latest = 1;
+   mrctid_ = maxtid;
+ 
+-	// write ahead logging
++  // write ahead logging
+   wal(maxtid.obj_);
+-
+   // write(record, commit-tid)
+   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
+     // update and unlock

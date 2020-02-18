@@ -61,18 +61,13 @@ void worker(size_t thid, char& ready, const bool& start, const bool& quit,
   uint64_t epoch_timer_start, epoch_timer_stop;
   Backoff backoff(CLOCKS_PER_US);
 
+  #ifdef WAL_SYNC
   char path[BUFSIZ];
   bzero(path, BUFSIZ);
-  sprintf(path, "/tmp/log/%d", thid);
-  //SSS(path);
-  //ERR;
-  std::string logpath = string(path);
-  //genLogFile(logpath, thid);
-  //trans.logfile_.open(logpath, O_TRUNC | O_WRONLY, 0644);
-  trans.logfile_.open(path, O_TRUNC | O_WRONLY, 0644);
-  trans.logfile_.ftruncate(10^9);
-
-	//NNN;
+  sprintf(path, "/home/guest/pmem/log/%d", thid);
+  trans.logfile_.open(path, O_CREAT|O_TRUNC | O_WRONLY|O_APPEND, 0644);
+  #endif
+  
 #if MASSTREE_USE
   MasstreeWrapper<Tuple>::thread_init(int(thid));
 #endif
@@ -142,16 +137,16 @@ logger(void *arg)
 {
   arg = NULL; // just to make compiler quiet
 
-	// open log file (river)
+  // open log file (river)
   for (uint thid = 0; thid < THREAD_NUM; thid++) {
     std::ostringstream oss;	oss << thid;
-    std::string logpath = "/tmp/log/log-" + oss.str();
+    std::string logpath = "/home/guest/nvme/log/log-" + oss.str();
     //std::cout << logpath << std::endl;
     genLogFile(logpath, thid);
     LogManager[thid].logfile_.open(logpath, O_TRUNC | O_WRONLY, 0644);
   }
   //trans.logfile.ftruncate(10^9);
-
+  
   while (true) {
     for (uint i = 0; i < THREAD_NUM; i++) {
       if (LogManager[i].cur_log_ == 1) { // 1 is used for workers, My Log ID = 2
@@ -189,7 +184,6 @@ logger(void *arg)
   }
 }
 
-
 void
 initLog(void)
 {
@@ -199,9 +193,11 @@ initLog(void)
     pthread_mutex_init(&LogManager[i].lck_log_1_, NULL);
     pthread_mutex_init(&LogManager[i].lck_log_2_, NULL);
   }
-  
-  pthread_t thread;
-  pthread_create(&thread, NULL, logger, NULL);
+
+  #ifdef WAL_ASYNC
+  //pthread_t thread;
+  //pthread_create(&thread, NULL, logger, NULL);
+  #endif
 }
 
 int main(int argc, char* argv[]) try {

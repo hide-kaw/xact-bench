@@ -224,7 +224,8 @@ void TxnExecutor::abort() {
 void TxnExecutor::wal(uint64_t ctid)
 {
 #ifdef WAL_ASYNC
-	for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
+  /*
+  for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
     LogRecord log(ctid, (*itr).key_, write_val_);
 		if (LogManager[thid_].cur_log_ == 1) {
       LogManager[thid_].log_set_1_.push_back(log);
@@ -250,17 +251,21 @@ void TxnExecutor::wal(uint64_t ctid)
 			pthread_mutex_unlock(&LogManager[thid_].lck_log_2_);
 		}
 	}
+  */
 #endif
 
 #ifdef WAL_SYNC  
-  for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
+
+	  for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
     LogRecord log(ctid, (*itr).key_, write_val_);
     log_set_.push_back(log);
     latest_log_header_.chkSum += log.computeChkSum();
     ++latest_log_header_.logRecNum;
   }
   
-  if (log_set_.size() > LOGSET_SIZE / 2) {
+  //if (log_set_.size() > LOGSET_SIZE / 2) {
+  if (log_set_.size() * sizeof(LogRecord) >= LOGSET_SIZE) {
+  //if (false) {
     // prepare write header
     latest_log_header_.convertChkSumIntoComplementOnTwo();
 
@@ -274,13 +279,13 @@ void TxnExecutor::wal(uint64_t ctid)
                    sizeof(LogRecord) * latest_log_header_.logRecNum);
 
     // sync
-    ERR;
     logfile_.fdatasync();
 
     // clear for next transactions.
     latest_log_header_.init();
     log_set_.clear();
   }
+
 #endif
 }
 
@@ -311,9 +316,8 @@ void TxnExecutor::writePhase() {
   maxtid.latest = 1;
   mrctid_ = maxtid;
 
-	// write ahead logging
+  // write ahead logging
   wal(maxtid.obj_);
-
   // write(record, commit-tid)
   for (auto itr = write_set_.begin(); itr != write_set_.end(); ++itr) {
     // update and unlock
